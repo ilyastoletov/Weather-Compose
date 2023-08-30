@@ -14,6 +14,7 @@ object CryptoContract {
     sealed class State : ViewState {
         object Loading : State()
         data class CryptoDataLoaded(val cryptoList: List<Crypto>) : State()
+        object NetworkFailure : State()
     }
 
     sealed class Effect : ViewEffect {

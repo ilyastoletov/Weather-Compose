@@ -13,7 +13,8 @@ data class WeatherResponseDto(
             iconLink = fact.iconLink,
             conditionLabel = fact.condition.toFullConditionString(),
             degreesCount = fact.temp.toInt(),
-            partlyPrediction = parts.toPartlyWeatherList()
+            partlyPrediction = parts.toPartlyWeatherList(),
+            feelsLike = fact.feelsLike
         )
 
         private fun String.toFullConditionString(): String = when(this) {

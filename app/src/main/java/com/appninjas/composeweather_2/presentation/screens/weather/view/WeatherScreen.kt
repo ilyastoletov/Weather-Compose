@@ -11,7 +11,9 @@ import android.location.LocationManager
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,14 +23,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CardElevation
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -44,14 +45,19 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.tooling.preview.Preview
 import coil.compose.AsyncImage
 import coil.decode.SvgDecoder
 import coil.request.ImageRequest
+import com.appninjas.composeweather_2.R
 import com.appninjas.composeweather_2.presentation.screens.weather.contract.WeatherContract
 import com.appninjas.composeweather_2.presentation.screens.weather.contract.WeatherViewModel
 import com.appninjas.composeweather_2.presentation.ui.failure.NetworkFailureScreen
 import com.appninjas.composeweather_2.presentation.ui.loading.LoadingScreen
 import com.appninjas.composeweather_2.presentation.utils.getActivity
+import com.appninjas.domain.model.UserLocation
 import com.appninjas.domain.model.Weather
 import com.appninjas.domain.model.WeatherPartly
 import kotlinx.coroutines.flow.onEach
@@ -67,7 +73,7 @@ fun WeatherScreen(viewModel: WeatherViewModel = hiltViewModel()) {
     LaunchedEffect(state) {
         viewModel.effect.onEach { effect ->
             when(effect) {
-                is WeatherContract.Effect.ShowErrorToast -> { Toast.makeText(context, "При загрузке данных произошла ошибка. Проверьте качество подключения к интернету и попробуйте снова", Toast.LENGTH_SHORT).show() }
+                is WeatherContract.Effect.ShowErrorToast -> { Toast.makeText(context, effect.errorMessage, Toast.LENGTH_SHORT).show() }
             }
         }
     }
@@ -80,25 +86,33 @@ private fun WeatherScreenContent(
     onEvent: (WeatherContract.Event) -> Unit) {
 
     val context = LocalContext.current
-    val geocodeAddress = remember { mutableStateOf("") }
     val location = remember { mutableStateOf<Location?>(null) }
 
     val onLocationLoaded: (Location) -> Unit = { userLocation ->
          location.value = userLocation
-         onEvent(WeatherContract.Event.LoadWeather(lat = userLocation.latitude, lon = userLocation.longitude))
+         writeUserLocationToSharedPrefs(context, userLocation)
+         onEvent(WeatherContract.Event.LoadWeather(location = UserLocation(lat = userLocation.latitude, lon = userLocation.longitude)))
+    }
+
+    val userLocation = getUserLocationFromSharedPrefs(context)
+    if (userLocation == null) {
+        changeUserLocation(context, onLocationLoaded)
+    } else {
+        onEvent(WeatherContract.Event.LoadWeather(userLocation))
     }
 
     when(state) {
-        is WeatherContract.State.Loading -> { LoadingScreen(); changeUserLocation(context, onLocationLoaded) }
-        is WeatherContract.State.WeatherDataLoaded -> Content(state.weather)
-        is WeatherContract.State.GeocodeAddressLoaded -> geocodeAddress.value = state.address.address
+        is WeatherContract.State.Loading -> LoadingScreen()
+        is WeatherContract.State.WeatherDataLoaded -> Content(state.weather, onLocationLoaded)
         is WeatherContract.State.NetworkFailure -> NetworkFailureScreen()
     }
 
 }
 
 @Composable
-private fun Content(weather: Weather) {
+private fun Content(weather: Weather, onLocationLoaded: (Location) -> Unit) {
+
+    val context = LocalContext.current
 
     Column(modifier = Modifier
         .fillMaxSize()
@@ -109,46 +123,14 @@ private fun Content(weather: Weather) {
                 .wrapContentHeight(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            /*Row(modifier = Modifier.padding(top = 25.dp)) {
-               Image(
-                    modifier = Modifier
-                        .padding(top = 2.dp)
-                        .clickable {
-                           /* if (locationState.value != null) {
-                                onEvent(
-                                    WeatherContract.Event.GeocodeCoordinates(
-                                        lat = locationState?.value?.latitude!!,
-                                        lon = locationState?.value?.longitude!!
-                                    )
-                                )
-                            }*/
-                           // changeUserLocation(context, onLocationLoaded)
-                                   },
-                    painter = rememberVectorPainter(image = Icons.Default.LocationOn),
-                    contentDescription = "choose location button"
-                )
-                Spacer(modifier = Modifier.width(5.dp))
-                Text(
-                    text = geocodeAddress.value,
-                    fontWeight = FontWeight.Normal,
-                    textAlign = TextAlign.Center,
-                    fontSize = when(geocodeAddress.value.length) {
-                        in 0..30 -> 18.sp
-                        in 30..50 -> 15.sp
-                        in 50..90 -> 13.sp
-                        else -> 11.sp
-                        },
-                    color = Color.Black
-                )
-            }*/
-            /*Image(
+            Image(
                 modifier = Modifier
-                    .width(200.dp)
-                    .height(180.dp)
-                    .padding(top = 15.dp),
-                painter = painterResource(id = R.drawable.clear_cloudy),
-                contentDescription = "weather icon"
-            )*/
+                    .padding(top = 10.dp, start = 10.dp)
+                    .align(alignment = Alignment.Start)
+                    .clickable { changeUserLocation(context, onLocationLoaded) },
+                painter = painterResource(id = R.drawable.baseline_location_on_24),
+                contentDescription = "choose location button"
+            )
             AsyncImage(
                 modifier = Modifier
                     .width(200.dp)
@@ -161,32 +143,30 @@ private fun Content(weather: Weather) {
                 contentDescription = "weather icon")
             Text(
                 text = weather.conditionLabel,
-                fontWeight = FontWeight.Normal,
+                fontWeight = FontWeight.SemiBold,
                 fontSize = 22.sp,
                 color = Color.Black
             )
             Text(
                 text = weather.degreesCount.toString() + "°C",
-                fontWeight = FontWeight.Light,
+                fontWeight = FontWeight.Normal,
                 fontSize = 38.sp,
                 color = Color.Black
             )
+            Text(
+                text = "Ощущается как: ${weather.feelsLike}°C",
+                fontWeight = FontWeight.Light,
+                fontSize = 20.sp
+            )
         }
-        Spacer(modifier = Modifier.height(20.dp))
-        Text(
-            modifier = Modifier.padding(start = 15.dp),
-            text = "Прогноз на 12 ч.",
-            color = Color.Black,
-            fontSize = 22.sp,
-            fontWeight = FontWeight.Light
-        )
-        Spacer(modifier = Modifier.height(10.dp))
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
+        Spacer(modifier = Modifier.height(15.dp))
+        LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
-                .wrapContentHeight(),
-            userScrollEnabled = true
+                .wrapContentHeight()
+                .padding(start = 10.dp, end = 10.dp),
+            contentPadding = PaddingValues(5.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             items(weather.partlyPrediction) {item ->
                 PartlyPredictionItem(weatherObject = item)
@@ -198,30 +178,41 @@ private fun Content(weather: Weather) {
 @Composable
 private fun PartlyPredictionItem(weatherObject: WeatherPartly) {
     Card(modifier = Modifier
-        .width(100.dp)
-        .height(50.dp),
+        .width(285.dp)
+        .height(95.dp)
+        .padding(bottom = 10.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 5.dp),
         shape = RoundedCornerShape(10.dp)
     ) {
-        Row() {
+        Row(modifier = Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
             AsyncImage(
                 modifier = Modifier
-                    .width(30.dp)
-                    .height(30.dp),
+                    .width(40.dp)
+                    .height(40.dp)
+                    .padding(start = 5.dp),
                 model = ImageRequest.Builder(LocalContext.current)
                     .data(weatherObject.iconLink)
                     .decoderFactory(SvgDecoder.Factory())
                     .build(),
                 contentDescription = "small weather icon"
             )
-            Column() {
-                Text(text = weatherObject.partOfDay, fontWeight = FontWeight.Normal, fontSize = 12.sp)
+            Spacer(modifier = Modifier.width(15.dp))
+            Column(modifier = Modifier.padding(top = 5.dp, bottom = 5.dp)) {
+                Text(text = weatherObject.partOfDay, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = Color.Black)
                 Spacer(modifier = Modifier.height(4.dp))
-                Text(text = weatherObject.temp.toString() + "°C", fontWeight = FontWeight.Thin, fontSize = 14.sp)
+                Text(text = "Температура: " + weatherObject.temp.toString() + "°C", fontWeight = FontWeight.Normal, fontSize = 16.sp, color = Color.Black)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(text = "Ощущается как: " + weatherObject.feelsLike.toString() + "°C", fontWeight = FontWeight.Thin, fontSize = 15.sp, color = Color.Black)
             }
         }
     }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun CardPreview() {
+    PartlyPredictionItem(weatherObject = WeatherPartly(iconLink = "https://yastatic.net/weather/i/icons/funky/dark/ovc.svg", feelsLike = 12, partOfDay = "День", temp = 14))
 }
 
 private fun changeUserLocation(context: Context, onLocationLoaded: (Location) -> Unit) {
@@ -257,9 +248,19 @@ private fun isLocationPermissionGranted(context: Context): Boolean {
 
 private fun isGPSEnabled(context: Context): Boolean {
     val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-    val gpsEnabled =  locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)
-    Log.d("weae", gpsEnabled.toString())
-    return gpsEnabled
+    return locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)
+}
+
+private fun writeUserLocationToSharedPrefs(context: Context, location: Location) {
+    val sharedPrefs = context.getSharedPreferences("main", Context.MODE_PRIVATE)
+    sharedPrefs.edit().putString("location", "${location.latitude},${location.longitude}")
+}
+
+private fun getUserLocationFromSharedPrefs(context: Context): UserLocation? {
+    val sharedPrefs = context.getSharedPreferences("main", Context.MODE_PRIVATE)
+    val locationString = sharedPrefs.getString("location", null) ?: return null
+    val locStringSplit = locationString.split(",")
+    return UserLocation(lat = locStringSplit[0].toDouble(), lon = locStringSplit[1].toDouble())
 }
 
 private fun showGiveLocationPermissionDialog(context: Context) {

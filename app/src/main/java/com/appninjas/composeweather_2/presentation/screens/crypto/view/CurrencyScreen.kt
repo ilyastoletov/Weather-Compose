@@ -12,25 +12,51 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.appninjas.composeweather_2.presentation.screens.crypto.contract.CryptoContract
+import com.appninjas.composeweather_2.presentation.screens.crypto.contract.CryptoViewModel
+import com.appninjas.composeweather_2.presentation.ui.failure.NetworkFailureScreen
+import com.appninjas.composeweather_2.presentation.ui.loading.LoadingScreen
 import com.appninjas.domain.model.Crypto
 
 @Composable
-fun CurrencyScreen() {
+fun CurrencyScreen(viewModel: CryptoViewModel = hiltViewModel()) {
 
-    val testCryptoList: List<Crypto> = listOf(
-        Crypto(name = "Bitcoin (BTC)", course = 24132),
-        Crypto(name = "Ethereum (ETH)", course = 1712),
-        Crypto(name = "Ethereum Classic (ETC)", course = 112312)
-    )
+    val state by viewModel.state.collectAsStateWithLifecycle()
 
-    LazyColumn(modifier = Modifier.fillMaxSize().padding(start = 10.dp, end = 10.dp, top = 15.dp)) {
+    CurrencyScreenContent(state = state, onEvent = viewModel::handleEvents)
+
+}
+
+@Composable
+private fun CurrencyScreenContent(
+    state: CryptoContract.State,
+    onEvent: (CryptoContract.Event) -> Unit) {
+
+    onEvent(CryptoContract.Event.LoadCryptoData)
+
+    when(state) {
+        is CryptoContract.State.Loading -> LoadingScreen()
+        is CryptoContract.State.CryptoDataLoaded -> Content(cryptoList = state.cryptoList)
+        is CryptoContract.State.NetworkFailure -> NetworkFailureScreen()
+    }
+
+}
+
+@Composable
+private fun Content(cryptoList: List<Crypto>) {
+    LazyColumn(modifier = Modifier
+        .fillMaxSize()
+        .padding(start = 10.dp, end = 10.dp, top = 15.dp)) {
         item { Text(text = "Криптовалюта", fontSize = 25.sp, fontWeight = FontWeight.SemiBold) }
         item { Spacer(modifier = Modifier.height(15.dp)) }
-        items(testCryptoList) { item -> CryptoItem(model = item) }
+        items(cryptoList) { item -> CryptoItem(model = item) }
     }
 }
 
